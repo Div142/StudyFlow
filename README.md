@@ -1,6 +1,6 @@
 # StudyFlow
 
-A MERN-ready live to-do frontend for students, built with React, Vite, and Tailwind CSS.
+A MERN-ready live to-do app for students, built with React, Vite, Tailwind CSS, Express, MongoDB, and Socket.io.
 
 ## Frontend
 
@@ -10,12 +10,35 @@ A MERN-ready live to-do frontend for students, built with React, Vite, and Tailw
 - Kanban, project cards, calendar preview, activity feed
 - Task create modal and task detail drawer
 
+## Backend
+
+- Express REST API
+- MongoDB models for users, workspaces, projects, tasks, and activity
+- JWT auth for signup, login, and protected routes
+- Workspace membership checks
+- Socket.io events for live tasks, activity, and online status
+- Zod request validation
+
 ## Setup
 
 Install Node package tooling, then run:
 
 ```powershell
 npm install
+npm --prefix server install
+```
+
+Create the backend environment file:
+
+```powershell
+Copy-Item server/.env.example server/.env
+```
+
+Then update `server/.env` with your MongoDB URI and JWT secret.
+
+Run the frontend:
+
+```powershell
 npm run dev
 ```
 
@@ -24,3 +47,30 @@ The frontend dev server runs on:
 ```txt
 http://localhost:5173
 ```
+
+Run the backend:
+
+```powershell
+npm run dev:server
+```
+
+The backend API runs on:
+
+```txt
+http://localhost:5000
+```
+
+## API Routes
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `GET /api/workspaces`
+- `POST /api/workspaces`
+- `GET /api/projects/:workspaceId`
+- `POST /api/projects/:workspaceId`
+- `GET /api/tasks/:workspaceId`
+- `POST /api/tasks/:workspaceId`
+- `PATCH /api/tasks/:workspaceId/:taskId`
+- `DELETE /api/tasks/:workspaceId/:taskId`
+- `GET /api/activity/:workspaceId`

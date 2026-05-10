@@ -60,6 +60,36 @@ The backend API runs on:
 http://localhost:5000
 ```
 
+## Frontend Environment
+
+Copy `.env.example` to `.env` and set:
+
+```txt
+VITE_API_URL=http://localhost:5000/api
+VITE_SOCKET_URL=http://localhost:5000
+```
+
+When deployed, these should point to the hosted backend URL.
+
+## Deployment
+
+This repo includes `render.yaml` for Render Blueprint deployment.
+
+Required hosted environment values:
+
+- `MONGO_URI`: your MongoDB Atlas connection string
+- `CLIENT_ORIGIN`: your hosted frontend URL
+- `VITE_API_URL`: hosted backend API URL ending in `/api`
+- `VITE_SOCKET_URL`: hosted backend root URL
+
+Example:
+
+```txt
+CLIENT_ORIGIN=https://studyflow-client.onrender.com
+VITE_API_URL=https://studyflow-api.onrender.com/api
+VITE_SOCKET_URL=https://studyflow-api.onrender.com
+```
+
 ## API Routes
 
 - `POST /api/auth/register`

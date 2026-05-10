@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import AuthPanel from "./components/auth/AuthPanel.jsx";
 import Sidebar from "./components/layout/Sidebar.jsx";
 import Header from "./components/layout/Header.jsx";
 import MobileNav from "./components/layout/MobileNav.jsx";
@@ -11,17 +12,144 @@ import TaskModal from "./components/tasks/TaskModal.jsx";
 import TaskDrawer from "./components/tasks/TaskDrawer.jsx";
 import MiniCalendar from "./components/calendar/MiniCalendar.jsx";
 import { activity, projects, tasks } from "./data.js";
+import { api, authStore } from "./lib/api.js";
+import { createStudyFlowSocket } from "./lib/socket.js";
+
+const groupTasks = (items) => ({
+  todo: items.filter((task) => task.status === "todo"),
+  doing: items.filter((task) => task.status === "doing"),
+  done: items.filter((task) => task.status === "done"),
+});
 
 export default function App() {
   const [isDark, setIsDark] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [showToast, setShowToast] = useState(false);
+  const [session, setSession] = useState(null);
+  const [authError, setAuthError] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isTaskSaving, setIsTaskSaving] = useState(false);
+  const [workspace, setWorkspace] = useState(null);
+  const [remoteProjects, setRemoteProjects] = useState([]);
+  const [remoteTasks, setRemoteTasks] = useState([]);
+  const [remoteActivity, setRemoteActivity] = useState([]);
+  const sessionId = session?._id || session?.id;
+
+  const visibleProjects = remoteProjects.length ? remoteProjects : projects;
+  const visibleTasks = remoteTasks.length ? groupTasks(remoteTasks) : tasks;
+  const visibleActivity = remoteActivity.length ? remoteActivity.map((item) => ({
+    user: item.actor?.username || "Someone",
+    text: item.message,
+  })) : activity;
+
+  const projectCards = useMemo(() => visibleProjects.map((project) => ({
+    ...project,
+    title: project.title || project.name,
+    meta: project.meta || "Live project",
+    progress: project.progress ?? 0,
+  })), [visibleProjects]);
 
   const openTask = (task) => {
     setSelectedTask(task);
     setShowToast(true);
     window.setTimeout(() => setShowToast(false), 2200);
+  };
+
+  const loadWorkspaceData = async () => {
+    const workspaceData = await api.workspaces();
+    const firstWorkspace = workspaceData.workspaces[0];
+    setWorkspace(firstWorkspace);
+
+    if (!firstWorkspace) return;
+
+    const [projectData, taskData, activityData] = await Promise.all([
+      api.projects(firstWorkspace._id),
+      api.tasks(firstWorkspace._id),
+      api.activity(firstWorkspace._id),
+    ]);
+
+    setRemoteProjects(projectData.projects);
+    setRemoteTasks(taskData.tasks);
+    setRemoteActivity(activityData.activity);
+  };
+
+  useEffect(() => {
+    if (!authStore.getToken()) return;
+
+    api.me()
+      .then((data) => {
+        setSession(data.user);
+        return loadWorkspaceData();
+      })
+      .catch(() => {
+        authStore.clearToken();
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId || !workspace?._id) return undefined;
+
+    const socket = createStudyFlowSocket({
+      userId: sessionId,
+      workspaceId: workspace._id,
+      onTaskCreated: (task) => setRemoteTasks((current) => [task, ...current]),
+      onTaskUpdated: (task) => setRemoteTasks((current) => current.map((item) => item._id === task._id ? task : item)),
+      onActivityCreated: (item) => setRemoteActivity((current) => [item, ...current].slice(0, 50)),
+      onPresence: () => {},
+    });
+
+    return () => socket.disconnect();
+  }, [sessionId, workspace?._id]);
+
+  const handleLogin = async (payload) => {
+    setIsAuthLoading(true);
+    setAuthError("");
+    try {
+      const data = await api.login(payload);
+      setSession(data.user);
+      await loadWorkspaceData();
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async (payload) => {
+    setIsAuthLoading(true);
+    setAuthError("");
+    try {
+      const data = await api.register(payload);
+      setSession(data.user);
+      await loadWorkspaceData();
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleCreateTask = async (payload) => {
+    if (!workspace?._id) {
+      const draft = {
+        ...payload,
+        id: crypto.randomUUID(),
+        due: payload.dueAt ? new Date(payload.dueAt).toLocaleString() : "No due date",
+      };
+      setRemoteTasks((current) => [draft, ...current]);
+      setIsTaskModalOpen(false);
+      return;
+    }
+
+    setIsTaskSaving(true);
+    try {
+      const data = await api.createTask(workspace._id, payload);
+      setRemoteTasks((current) => [data.task, ...current]);
+      setIsTaskModalOpen(false);
+    } finally {
+      setIsTaskSaving(false);
+    }
   };
 
   return (
@@ -31,6 +159,15 @@ export default function App() {
           <Sidebar />
           <main className="min-w-0 p-5 pb-24 sm:p-7 lg:pb-7">
             <Header isDark={isDark} onToggleTheme={() => setIsDark((value) => !value)} />
+
+            {!session && (
+              <AuthPanel
+                onLogin={handleLogin}
+                onRegister={handleRegister}
+                isLoading={isAuthLoading}
+                error={authError}
+              />
+            )}
 
             <section className="mb-5 flex flex-col justify-between gap-5 rounded-3xl border border-rose-100 bg-gradient-to-br from-blush to-white p-6 shadow-soft xl:flex-row xl:items-center" id="dashboard">
               <div>
@@ -70,7 +207,7 @@ export default function App() {
                 </div>
 
                 <div className="mb-5 grid gap-3 xl:grid-cols-3">
-                  {projects.map((project) => <ProjectCard key={project.title} project={project} />)}
+                  {projectCards.map((project) => <ProjectCard key={project._id || project.title} project={project} />)}
                 </div>
 
                 <div className="grid grid-cols-4 gap-2 rounded-2xl border border-rose-100 bg-cream p-1.5">
@@ -85,19 +222,25 @@ export default function App() {
                   ))}
                 </div>
 
-                <KanbanBoard tasks={tasks} onOpenTask={openTask} />
+                <KanbanBoard tasks={visibleTasks} onOpenTask={openTask} />
               </div>
 
               <aside className="grid content-start gap-5">
                 <MiniCalendar />
-                <ActivityFeed items={activity} />
+                <ActivityFeed items={visibleActivity} />
               </aside>
             </section>
           </main>
         </div>
 
         <MobileNav onCreateTask={() => setIsTaskModalOpen(true)} />
-        <TaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} />
+        <TaskModal
+          isOpen={isTaskModalOpen}
+          onClose={() => setIsTaskModalOpen(false)}
+          onSubmit={handleCreateTask}
+          projects={visibleProjects}
+          isSaving={isTaskSaving}
+        />
         <TaskDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
 
         <div className={`fixed bottom-5 right-5 z-50 rounded-xl border border-rose-100 bg-white px-4 py-3 font-extrabold text-ink shadow-soft transition ${

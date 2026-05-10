@@ -75,6 +75,14 @@ When deployed, these should point to the hosted backend URL.
 
 This repo includes `render.yaml` for Render Blueprint deployment.
 
+The frontend is also configured for GitHub Pages through `.github/workflows/deploy-pages.yml`.
+
+Public frontend URL after Pages deploys:
+
+```txt
+https://div142.github.io/StudyFlow/
+```
+
 Required hosted environment values:
 
 - `MONGO_URI`: your MongoDB Atlas connection string
